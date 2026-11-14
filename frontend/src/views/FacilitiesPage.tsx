@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Filter, ChevronLeft, ChevronRight, Eye, X } from "lucide-react";
+import { Search, Filter, Eye, X } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -21,7 +21,7 @@ interface FacilitiesPageProps {
   year?: string;
 }
 
-const PAGE_SIZE = 5;
+const TOP_COUNT = 10;
 const CHART_COLORS = [
   "var(--color-palette-primary)",
   "var(--color-palette-medium)",
@@ -34,7 +34,6 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
   const [typeFilter, setTypeFilter] = useState("Semua Tipe");
   const [kelasFilter, setKelasFilter] = useState("Semua Kelas");
   const [ownershipFilter, setOwnershipFilter] = useState("Semua Kepemilikan");
-  const [page, setPage] = useState(0);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
 
   const filtered = facilities.filter((f) => {
@@ -47,8 +46,10 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
     return matchSearch && matchType && matchKelas && matchOwnership;
   });
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const topFacilities = [...filtered]
+    .sort((a, b) => b.beds - a.beds)
+    .slice(0, TOP_COUNT);
+  const topBeds = topFacilities.reduce((total, facility) => total + facility.beds, 0);
   const facilityTypeData = facilityTypes
     .filter((type) => type !== "Semua Tipe")
     .map((type) => ({
@@ -64,8 +65,6 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
       return regions;
     }, {}),
   ).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "id"));
-
-  const handleFilterChange = () => setPage(0);
 
   return (
     <div className="cura-page">
@@ -95,7 +94,7 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
               type="text"
               placeholder="Cari nama atau kabupaten..."
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); handleFilterChange(); }}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
@@ -106,7 +105,7 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
           <select
             className="cura-select"
             value={typeFilter}
-            onChange={(e) => { setTypeFilter(e.target.value); handleFilterChange(); }}
+            onChange={(e) => setTypeFilter(e.target.value)}
           >
             {facilityTypes.map((t) => <option key={t}>{t}</option>)}
           </select>
@@ -114,7 +113,7 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
           <select
             className="cura-select"
             value={kelasFilter}
-            onChange={(e) => { setKelasFilter(e.target.value); handleFilterChange(); }}
+            onChange={(e) => setKelasFilter(e.target.value)}
           >
             {facilityKelas.map((k) => <option key={k}>{k}</option>)}
           </select>
@@ -122,7 +121,7 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
           <select
             className="cura-select"
             value={ownershipFilter}
-            onChange={(e) => { setOwnershipFilter(e.target.value); handleFilterChange(); }}
+            onChange={(e) => setOwnershipFilter(e.target.value)}
           >
             {ownershipOptions.map((o) => <option key={o}>{o}</option>)}
           </select>
@@ -277,11 +276,17 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
         <div className="facilities-data-grid">
           <div className="cura-card facilities-map-card">
             <div className="cura-section-title">Rasio tempat tidur per 1.000 penduduk menurut wilayah</div>
-            <EastJavaMarkerMap metric="bedRatio" height={420} />
+            <EastJavaMarkerMap metric="bedRatio" compact />
           </div>
 
-        {/* Table — desktop */}
-        <div className="cura-card cura-desktop-only facilities-table-card" style={{ padding: 0, overflow: "hidden" }}>
+        {/* Table - desktop */}
+        <div
+          className="cura-card cura-desktop-only facilities-table-card"
+          style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}
+        >
+          <div className="facilities-table-header">
+            <div className="cura-section-title">10 Fasilitas dengan Tempat Tidur Terbanyak</div>
+          </div>
           <div className="facilities-table-scroll">
             <table className="cura-table">
               <thead>
@@ -297,62 +302,78 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
                 </tr>
               </thead>
               <tbody>
-                {paginated.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} style={{ textAlign: "center", padding: "var(--spacing-xl)", color: "var(--color-text-secondary)" }}>
-                      Tidak ada data yang sesuai.
+                {topFacilities.map((f, idx) => (
+                  <tr key={f.id}>
+                    <td style={{ color: "var(--color-text-secondary)" }}>{idx + 1}</td>
+                    <td style={{ fontWeight: "var(--font-weight-medium)" }}>{f.name}</td>
+                    <td>{f.kabupaten}</td>
+                    <td>{f.type}</td>
+                    <td>
+                      <span style={{
+                        display: "inline-block", padding: "2px 8px", borderRadius: "4px",
+                        fontSize: "var(--font-size-caption)",
+                        background: f.kelas === "A" ? "var(--color-safe-subtle)" : f.kelas === "B" ? "var(--color-light-blue)" : f.kelas === "C" ? "var(--color-warning-subtle)" : "var(--color-page-bg)",
+                        color: f.kelas === "A" ? "var(--color-safe)" : f.kelas === "B" ? "var(--color-medical-blue)" : f.kelas === "C" ? "var(--color-warning)" : "var(--color-text-secondary)",
+                      }}>
+                        {f.kelas}
+                      </span>
+                    </td>
+                    <td>{f.beds.toLocaleString("id-ID")}</td>
+                    <td>{f.ownership}</td>
+                    <td>
+                      <button
+                        className="cura-btn cura-btn-secondary"
+                        style={{ padding: "4px 10px", fontSize: "var(--font-size-caption)", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        onClick={() => setSelectedFacility(f)}
+                      >
+                        <Eye size={13} />
+                        Lihat Detail
+                      </button>
                     </td>
                   </tr>
-                ) : (
-                  paginated.map((f, idx) => (
-                    <tr key={f.id}>
-                      <td style={{ color: "var(--color-text-secondary)" }}>{page * PAGE_SIZE + idx + 1}</td>
-                      <td style={{ fontWeight: "var(--font-weight-medium)" }}>{f.name}</td>
-                      <td>{f.kabupaten}</td>
-                      <td>{f.type}</td>
-                      <td>
-                        <span style={{
-                          display: "inline-block", padding: "2px 8px", borderRadius: "4px",
-                          fontSize: "var(--font-size-caption)",
-                          background: f.kelas === "A" ? "var(--color-safe-subtle)" : f.kelas === "B" ? "var(--color-light-blue)" : f.kelas === "C" ? "var(--color-warning-subtle)" : "var(--color-page-bg)",
-                          color: f.kelas === "A" ? "var(--color-safe)" : f.kelas === "B" ? "var(--color-medical-blue)" : f.kelas === "C" ? "var(--color-warning)" : "var(--color-text-secondary)",
-                        }}>
-                          {f.kelas}
-                        </span>
-                      </td>
-                      <td>{f.beds.toLocaleString("id-ID")}</td>
-                      <td>{f.ownership}</td>
-                      <td>
-                        <button
-                          className="cura-btn cura-btn-secondary"
-                          style={{ padding: "4px 10px", fontSize: "var(--font-size-caption)", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                          onClick={() => setSelectedFacility(f)}
-                        >
-                          <Eye size={13} />
-                          Lihat Detail
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                ))}
+                {topFacilities.length < TOP_COUNT && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      style={{
+                        height: `${(TOP_COUNT - topFacilities.length) * 46}px`,
+                        textAlign: "center",
+                        verticalAlign: "middle",
+                        color: "var(--color-text-secondary)",
+                      }}
+                    >
+                      {topFacilities.length === 0
+                        ? "Tidak ada data yang sesuai dengan filter aktif."
+                        : `Hanya ${topFacilities.length} fasilitas yang sesuai filter aktif.`}
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
+          <div className="facilities-table-summary">
+            <span>
+              <strong>{topFacilities.length.toLocaleString("id-ID")}</strong> dari{" "}
+              <strong>{filtered.length.toLocaleString("id-ID")}</strong> fasilitas
+            </span>
+            <span><strong>{topBeds.toLocaleString("id-ID")}</strong> tempat tidur</span>
+          </div>
         </div>
         </div>
 
-        {/* Cards — mobile */}
+        {/* Cards - mobile */}
         <div className="cura-mobile-only" style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-md)" }}>
-          {paginated.length === 0 ? (
+          {topFacilities.length === 0 ? (
             <div className="cura-card" style={{ textAlign: "center", color: "var(--color-text-secondary)" }}>
-              Tidak ada data yang sesuai.
+              Tidak ada data yang sesuai dengan filter aktif.
             </div>
-          ) : paginated.map((f) => (
+          ) : topFacilities.map((f) => (
             <div key={f.id} className="cura-facility-card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <div style={{ fontWeight: "var(--font-weight-semibold)", fontSize: "var(--font-size-body-sm)", color: "var(--color-navy)" }}>{f.name}</div>
-                  <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-text-secondary)", marginTop: 2 }}>{f.type} · Kelas {f.kelas}</div>
+                  <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-text-secondary)", marginTop: 2 }}>{f.type}, Kelas {f.kelas}</div>
                   <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-text-secondary)" }}>{f.kabupaten}</div>
                 </div>
                 <span style={{
@@ -378,35 +399,6 @@ export default function FacilitiesPage({ onAIPanel }: FacilitiesPageProps) {
           ))}
         </div>
 
-        {/* Pagination */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "var(--spacing-md)", flexWrap: "wrap", gap: "var(--spacing-sm)" }}>
-          <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-text-secondary)" }}>
-            Menampilkan {filtered.length === 0 ? 0 : page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} dari {filtered.length} fasilitas
-          </span>
-          <div style={{ display: "flex", gap: "var(--spacing-xs)" }}>
-            <button
-              className="cura-btn cura-btn-secondary"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
-            >
-              <ChevronLeft size={14} />
-              Sebelumnya
-            </button>
-            <span className="facilities-page-indicator">
-              Halaman {page + 1} dari {Math.max(1, totalPages)}
-            </span>
-            <button
-              className="cura-btn cura-btn-secondary"
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-              style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
-            >
-              Berikutnya
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Drawer */}

@@ -856,19 +856,60 @@ button,
 
 .facilities-map-card {
   min-width: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
 }
 
+.facilities-map-card > .ejm-compact-root {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .facilities-table-card {
   min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.facilities-table-header {
+  flex: 0 0 auto;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-white);
+}
+
+.facilities-table-card .cura-table td {
+  padding-top: 13px;
+  padding-bottom: 13px;
 }
 
 .facilities-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
+}
+
+.facilities-table-summary {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-white);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-base);
+  font-size: 12px;
+}
+
+.facilities-table-summary strong {
+  color: var(--color-navy);
+  font-weight: 700;
 }
 
 .facilities-table-card .cura-table th {
@@ -4157,6 +4198,58 @@ button,
   background: var(--color-page-bg);
 }
 
+/* Mode ringkas: peta + legenda horizontal di luar area peta. */
+.ejm-compact-root {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ejm-compact-map {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 420px;
+}
+
+.ejm-compact-map > .ejm-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ejm-compact-legend {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 8px 2px 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-family-base);
+  font-size: 12px;
+}
+
+.ejm-compact-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ejm-compact-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 99px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.ejm-compact-legend-count {
+  font-weight: 700;
+}
+
 .ejm-map,
 .ejm-map .leaflet-container,
 .ejm-wrap .leaflet-container {
@@ -5081,7 +5174,7 @@ button,
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: var(--spacing-lg);
-    align-items: start;
+    align-items: stretch;
   }
 
   .facilities-map-card {
@@ -5098,9 +5191,12 @@ button,
     font-size: var(--font-size-caption);
   }
 
-  .facilities-table-card .cura-table th,
-  .facilities-table-card .cura-table td {
+  .facilities-table-card .cura-table th {
     padding: var(--spacing-sm);
+  }
+
+  .facilities-table-card .cura-table td {
+    padding: 13px var(--spacing-sm);
   }
 
   /* Disease and compare views stay within one to two screens */

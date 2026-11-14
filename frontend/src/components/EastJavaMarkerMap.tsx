@@ -392,6 +392,7 @@ interface PaneLayersProps {
   onGeoReady: () => void;
   onLayerReady: (layer: L.GeoJSON | null) => void;
   onTileError: () => void;
+  compact: boolean;
 }
 
 function PaneLayers({
@@ -408,6 +409,7 @@ function PaneLayers({
   onGeoReady,
   onLayerReady,
   onTileError,
+  compact,
 }: PaneLayersProps) {
   const map = useMap();
 
@@ -462,7 +464,7 @@ function PaneLayers({
       {layers.labels && <LabelsLayer points={labelPoints} zoom={zoom} />}
 
       {/* View awal: invalidateSize + fitBounds SETELAH geoData & layout final. */}
-      <MapInitialView geoData={geoData} geoReady={geoReady} />
+      <MapInitialView geoData={geoData} geoReady={geoReady} compact={compact} />
     </>
   );
 }
@@ -482,9 +484,11 @@ function PaneLayers({
 function MapInitialView({
   geoData,
   geoReady,
+  compact,
 }: {
   geoData: GeoJSON.GeoJsonObject | null;
   geoReady: boolean;
+  compact: boolean;
 }) {
   const map = useMap();
   const startedRef = useRef(false);
@@ -506,11 +510,17 @@ function MapInitialView({
     let timer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
 
+    const fitTarget = bounds.isValid() ? bounds : fallbackBounds();
+    // Mode ringkas: padding rapat dan maxBounds hanya sedikit lebih luas dari
+    // Jawa Timur agar peta tidak bisa digeser ke Kalimantan/Jawa Tengah.
+    const padding = compact ? 8 : MAP_PADDING;
+    const maxBoundsTarget = compact ? fitTarget.pad(0.12) : MAX_BOUNDS;
+
     // maxBounds hanya dihitung/dipasang SETELAH fitBounds selesai.
     const applyMaxBoundsOnce = () => {
       if (maxBoundsAppliedRef.current || cancelled) return;
       maxBoundsAppliedRef.current = true;
-      map.setMaxBounds(MAX_BOUNDS);
+      map.setMaxBounds(maxBoundsTarget);
     };
 
     const syncView = () => {
@@ -522,12 +532,16 @@ function MapInitialView({
       map.invalidateSize({ animate: false });
 
       // 2) Fit ke bounds sebenarnya dari geoData.
-      const fitTarget = bounds.isValid() ? bounds : fallbackBounds();
-
       // Pasang listener SEKALI tepat sebelum fitBounds: moveend pertama berarti
       // fitBounds sudah selesai.
       map.once("moveend", applyMaxBoundsOnce);
-      map.fitBounds(fitTarget, { padding: [MAP_PADDING, MAP_PADDING], animate: false });
+      // Longgarkan minZoom sementara agar fitBounds tidak terhambat hasil fit
+      // sebelumnya; setelah fit, minZoom dikunci ke zoom hasil fit.
+      if (compact) map.setMinZoom(0);
+      map.fitBounds(fitTarget, { padding: [padding, padding], animate: false });
+
+      // Mode ringkas: batasi zoom keluar sesuai hasil fit.
+      if (compact) map.setMinZoom(map.getZoom());
 
       // 3) Paksa renderer menghitung ulang bounds + transform (tanpa animasi).
       map.setView(map.getCenter(), map.getZoom(), { animate: false });
@@ -559,13 +573,21 @@ function MapInitialView({
       if (timer) clearTimeout(timer);
       map.off("moveend", applyMaxBoundsOnce);
     };
-  }, [geoData, geoReady, map]);
+  }, [geoData, geoReady, map, compact]);
 
   return null;
 }
 
 // ── Reset: fit ulang HANYA saat resetKey berubah (guarded) ─────────────────
-function MapReset({ resetKey, bounds }: { resetKey: number; bounds: L.LatLngBounds }) {
+function MapReset({
+  resetKey,
+  bounds,
+  compact,
+}: {
+  resetKey: number;
+  bounds: L.LatLngBounds;
+  compact: boolean;
+}) {
   const map = useMap();
   const firstRef = useRef(true);
   useEffect(() => {
@@ -573,13 +595,25 @@ function MapReset({ resetKey, bounds }: { resetKey: number; bounds: L.LatLngBoun
       firstRef.current = false;
       return;
     }
-    map.fitBounds(bounds, { padding: [MAP_PADDING, MAP_PADDING], animate: false });
-  }, [resetKey, map]);
+    const padding = compact ? 8 : MAP_PADDING;
+    if (compact) map.setMinZoom(0);
+    map.fitBounds(bounds, { padding: [padding, padding], animate: false });
+    if (compact) map.setMinZoom(map.getZoom());
+  }, [resetKey, map, compact]);
   return null;
 }
 
 // ── Resize: invalidateSize hanya bila lebar/tinggi benar-benar berubah ─────
-function MapResizer() {
+// Mode ringkas ikut fitBounds ulang setelah ukuran container berubah, supaya
+// seluruh Jawa Timur (Madura, Situbondo, Banyuwangi) tetap utuh saat tinggi
+// kartu tabel berubah.
+function MapResizer({
+  compact,
+  bounds,
+}: {
+  compact: boolean;
+  bounds: L.LatLngBounds | null;
+}) {
   const map = useMap();
   const lastRef = useRef<{ w: number; h: number } | null>(null);
 
@@ -597,6 +631,11 @@ function MapResizer() {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         map.invalidateSize({ animate: false });
+        if (compact && bounds) {
+          map.setMinZoom(0);
+          map.fitBounds(bounds, { padding: [8, 8], animate: false });
+          map.setMinZoom(map.getZoom());
+        }
       });
     });
     observer.observe(container);
@@ -604,7 +643,7 @@ function MapResizer() {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [map]);
+  }, [map, compact, bounds]);
 
   return null;
 }
@@ -916,6 +955,9 @@ export interface EastJavaMarkerMapProps {
   /** True saat panel detail wilayah terbuka. Dipakai untuk satu kali
    *  invalidateSize setelah panel dibuka/ditutup (tanpa fitBounds ulang). */
   panelOpen?: boolean;
+  /** Mode ringkas untuk kartu kecil (mis. Facilities): fit rapat ke Jawa
+   *  Timur, tanpa label wilayah, tanpa tombol reset, legenda di bawah peta. */
+  compact?: boolean;
 }
 
 interface TooltipState {
@@ -938,6 +980,7 @@ export default function EastJavaMarkerMap({
   onMapBackgroundClick,
   resetKey = 0,
   panelOpen = false,
+  compact = false,
 }: EastJavaMarkerMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const baseLayerRef = useRef<L.GeoJSON | null>(null);
@@ -1181,7 +1224,9 @@ export default function EastJavaMarkerMap({
     borderRadius: "var(--radius-lg)",
     ...(height !== undefined
       ? { height, minHeight: 360 }
-      : { flex: 1, minHeight: 480, height: "100%" }),
+      : compact
+        ? { flex: 1, minHeight: 420, height: "100%" }
+        : { flex: 1, minHeight: 480, height: "100%" }),
   };
 
   const clusterStyle = tooltip ? CLUSTER_STYLES[tooltip.cluster] : null;
@@ -1210,7 +1255,7 @@ export default function EastJavaMarkerMap({
     );
   }, [tooltipPos, tooltip]);
 
-  return (
+  const mapElement = (
     <div ref={wrapperRef} className="ejm-wrap" data-ejm-map style={wrapperStyle}>
       {/* Selama data belum siap: placeholder dengan tinggi SAMA, tanpa
           MapContainer (agar peta tidak pernah dirender dengan data kosong). */}
@@ -1249,10 +1294,14 @@ export default function EastJavaMarkerMap({
           scrollWheelZoom
           zoomControl={false}
         >
-          <MapResizer />
+          <MapResizer compact={compact} bounds={geoBounds} />
           <MapPanelResizer panelOpen={panelOpen} />
           <MapBackgroundClick onBackgroundClick={onMapBackgroundClick} />
-          <MapReset resetKey={resetKey} bounds={geoBounds ?? fallbackBounds()} />
+          <MapReset
+            resetKey={resetKey}
+            bounds={geoBounds ?? fallbackBounds()}
+            compact={compact}
+          />
           <MapZoomWatcher onZoom={handleZoom} />
 
           {/* Pane basemap & label dibuat sinkron di dalam anak ini; poligon
@@ -1263,7 +1312,7 @@ export default function EastJavaMarkerMap({
             onMap={(instance) => {
               mapRef.current = instance;
             }}
-            layers={layers}
+            layers={compact ? { ...layers, labels: false } : layers}
             geoData={geoData}
             styleFn={styleFn as unknown as L.StyleFunction}
             onEachFeature={
@@ -1280,6 +1329,7 @@ export default function EastJavaMarkerMap({
               baseLayerRef.current = instance;
             }}
             onTileError={handleTileError}
+            compact={compact}
           />
         </MapContainer>
       )}
@@ -1313,19 +1363,21 @@ export default function EastJavaMarkerMap({
         >
           <Minus size={16} />
         </button>
-        <button
-          type="button"
-          aria-label="Reset peta"
-          onClick={() =>
-            mapRef.current?.fitBounds(geoBounds ?? fallbackBounds(), {
-              padding: [MAP_PADDING, MAP_PADDING],
-              animate: false,
-            })
-          }
-          className="ejm-zoom-btn"
-        >
-          <RotateCcw size={14} />
-        </button>
+        {!compact && (
+          <button
+            type="button"
+            aria-label="Reset peta"
+            onClick={() =>
+              mapRef.current?.fitBounds(geoBounds ?? fallbackBounds(), {
+                padding: [MAP_PADDING, MAP_PADDING],
+                animate: false,
+              })
+            }
+            className="ejm-zoom-btn"
+          >
+            <RotateCcw size={14} />
+          </button>
+        )}
         </div>
       )}
 
@@ -1412,7 +1464,7 @@ export default function EastJavaMarkerMap({
       )}
 
       {/* Petunjuk bila batas nonaktif */}
-      {geoData && !layers.boundaries && (
+      {!compact && geoData && !layers.boundaries && (
         <div
           style={{
             position: "absolute",
@@ -1449,7 +1501,7 @@ export default function EastJavaMarkerMap({
       )}
 
       {/* Legenda di bawah peta (disembunyikan bila "Warna Klaster" mati) */}
-      {geoData && layers.fill && (
+      {!compact && geoData && layers.fill && (
         <div
           style={{
             position: "absolute",
@@ -1465,6 +1517,28 @@ export default function EastJavaMarkerMap({
             counts={counts}
             total={regionHealth.length}
           />
+        </div>
+      )}
+    </div>
+  );
+
+  if (!compact) return mapElement;
+
+  return (
+    <div className="ejm-compact-root">
+      <div className="ejm-compact-map">{mapElement}</div>
+      {geoData && layers.fill && (
+        <div className="ejm-compact-legend" aria-label="Legenda klaster">
+          {config.legend.map((entry) => (
+            <span key={entry.cluster} className="ejm-compact-legend-item">
+              <span
+                className="ejm-compact-legend-dot"
+                style={{ background: entry.color }}
+              />
+              <span>{entry.label}</span>
+              <span className="ejm-compact-legend-count">{counts[entry.cluster]}</span>
+            </span>
+          ))}
         </div>
       )}
     </div>
